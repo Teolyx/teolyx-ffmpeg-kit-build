@@ -1,0 +1,62 @@
+name: build-ffmpeg-kit
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+env:
+  # arthenica/ffmpeg-kit-next @ HEAD, verified via
+  # `git ls-remote https://github.com/arthenica/ffmpeg-kit-next HEAD` on
+  # 2026-10-15.
+  FFMPEG_KIT_NEXT_REF: 5e51b2da4c3593c0f2f9b49f53eeb497d93e39d3
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { repository: arthenica/ffmpeg-kit-next, ref: '${{ env.FFMPEG_KIT_NEXT_REF }}', path: fkn }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      # android/README.md at the pinned ref names "android-r27d" as the
+      # current Nix-pinned NDK profile. r27d's sdkmanager package id is
+      # 27.3.13750724 (verified against Google's repository2-3.xml) - the
+      # brief's 27.2.12479018 is actually r27c.
+      - run: sdkmanager "ndk;27.3.13750724"
+      - run: sudo apt-get update && sudo apt-get install -y autoconf automake libtool pkg-config nasm gperf texinfo
+      - run: bash scripts/build-android.sh
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.3.13750724
+      - uses: actions/upload-artifact@v4
+        with: { name: android, path: dist/ffmpeg-kit.aar }
+
+  ios:
+    # apple/README.md at the pinned ref requires Xcode 26.0+ for every Apple
+    # target. macos-15 runners only carry Xcode 26.x as a non-default,
+    # selectable toolchain (default is still 16.4); macos-26 images have been
+    # GA since Feb 2026 with Xcode 26.4.1 as the default, so we build there
+    # instead of adding an xcode-select step.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { repository: arthenica/ffmpeg-kit-next, ref: '${{ env.FFMPEG_KIT_NEXT_REF }}', path: fkn }
+      - run: brew install autoconf automake libtool pkg-config nasm gperf texinfo
+      - run: bash scripts/build-ios.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: ios, path: dist/ffmpeg-kit-ios-xcframeworks.zip }
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [android, ios]
+    runs-on: ubuntu-24.04
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: out, merge-multiple: true }
+      - run: cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with: { files: 'out/*' }

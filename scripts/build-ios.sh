@@ -12,7 +12,10 @@
 # leaves exactly arm64 (device) + arm64-simulator, matching the comment above.
 set -euo pipefail
 cd "$(dirname "$0")/../fkn"
-./ios.sh -x \
+# Upstream's recommended Nix wrapper: the xcode26 profile supplies GNU sed,
+# autotools, nasm etc. (macOS ships BSD sed, which the build rejects). Xcode
+# itself comes from the runner image.
+./nix-ios.sh -p xcode26 -x \
   --enable-lib-ios-videotoolbox \
   --enable-lib-ios-audiotoolbox \
   --enable-lib-ios-zlib \

@@ -10,7 +10,10 @@
 # lame) and architecture names (arm-v7a-neon, x86) are unchanged.
 set -euo pipefail
 cd "$(dirname "$0")/../fkn"
-./android.sh \
+# Upstream's recommended Nix wrapper: the android-r27d profile supplies the
+# Android SDK, NDK r27d, CMake, GNU sed and every other build tool, so the
+# runner needs nothing preinstalled except Nix.
+./nix-android.sh -p android-r27d \
   --enable-lib-android-media-codec \
   --enable-lib-android-zlib \
   --enable-lib-lame \

@@ -4,6 +4,16 @@ on:
   push:
     tags: ['v*']
 
+# Read-only by default; only the release job may write (to publish assets).
+permissions:
+  contents: read
+
+# Never run two builds of the same tag/branch at once (they would race to
+# publish the same release).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   # arthenica/ffmpeg-kit-next @ HEAD, verified via
   # `git ls-remote https://github.com/arthenica/ffmpeg-kit-next HEAD` on
@@ -14,16 +24,17 @@ jobs:
   android:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with: { repository: arthenica/ffmpeg-kit-next, ref: '${{ env.FFMPEG_KIT_NEXT_REF }}', path: fkn }
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false, repository: arthenica/ffmpeg-kit-next, ref: '${{ env.FFMPEG_KIT_NEXT_REF }}', path: fkn }
       # The preinstalled Android SDK is not used (Nix brings its own); remove it
       # and other large unused toolchains so the NDK + FFmpeg build fit on disk.
       - run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup && df -h /
       - uses: cachix/install-nix-action@v31
       - run: bash scripts/build-android.sh
-      - uses: actions/upload-artifact@v4
-        with: { name: android, path: dist/ffmpeg-kit.aar }
+      - uses: actions/upload-artifact@v7
+        with: { name: android, path: dist/ffmpeg-kit.aar, if-no-files-found: error, retention-days: 30 }
 
   ios:
     # apple/README.md at the pinned ref requires Xcode 26.0+ for every Apple
@@ -33,22 +44,24 @@ jobs:
     # instead of adding an xcode-select step.
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with: { repository: arthenica/ffmpeg-kit-next, ref: '${{ env.FFMPEG_KIT_NEXT_REF }}', path: fkn }
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false, repository: arthenica/ffmpeg-kit-next, ref: '${{ env.FFMPEG_KIT_NEXT_REF }}', path: fkn }
       - uses: cachix/install-nix-action@v31
       - run: bash scripts/build-ios.sh
-      - uses: actions/upload-artifact@v4
-        with: { name: ios, path: dist/ffmpeg-kit-ios-xcframeworks.zip }
+      - uses: actions/upload-artifact@v7
+        with: { name: ios, path: dist/ffmpeg-kit-ios-xcframeworks.zip, if-no-files-found: error, retention-days: 30 }
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [android, ios]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions: { contents: write }
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: out, merge-multiple: true }
       - run: cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
-      - uses: softprops/action-gh-release@v2
-        with: { files: 'out/*' }
+      - uses: softprops/action-gh-release@v3
+        with: { files: 'out/*', fail_on_unmatched_files: true }

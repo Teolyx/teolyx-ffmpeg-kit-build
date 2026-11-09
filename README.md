@@ -19,3 +19,17 @@ re-reading that commit's `android/README.md` / `apple/README.md` before
 bumping the ref - flag names and build-output paths have changed between
 releases (see comments in `scripts/build-android.sh` and
 `scripts/build-ios.sh`).
+
+## Workflow notes
+
+- Every action runs on the Node 24 runtime (checkout v7, upload-artifact
+  v7, download-artifact v8, action-gh-release v3); Node 20 actions are
+  deprecated on GitHub runners.
+- The workflow token is read-only except in the `release` job, checkouts do
+  not keep credentials, and the release fails if an expected file is
+  missing.
+- Upstream has moved on since the pin (2026-11-09: HEAD `d031df3`, FFmpeg
+  n9.0.2 vs n9.0.1 at the pinned ref). Re-pinning changes the shipped
+  binaries: tag a new release (`v2`), then update
+  `teolyx-clear-mobile/ffmpeg-kit.lock.json` and re-run the device
+  checklist in `teolyx-clear-mobile/BUILD.md`.
